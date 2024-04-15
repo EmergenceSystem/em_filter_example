@@ -1,6 +1,7 @@
 use actix_web::{post, HttpResponse, Responder, App, HttpServer};
 use rand::Rng;
-use embryo::{Embryo, EmPair, EmbryoList};
+use embryo::{Embryo, EmbryoList};
+use std::collections::HashMap;
 
 #[post("/query")]
 async fn query_handler(body: String) -> impl Responder {
@@ -11,8 +12,8 @@ async fn query_handler(body: String) -> impl Responder {
 
 fn generate_embryo_list(json_string: String) -> Vec<Embryo> {
     println!("Call {}", json_string);
-    let search: EmPair =
-        serde_json::from_str(&json_string).expect("Error deserializing JSON");
+    let em_search: HashMap<String,String> = serde_json::from_str(&json_string).expect("Error deserializing JSON");
+    let (_key, value) = em_search.iter().next().expect("Empty map");   
     let mut rng = rand::thread_rng();
     let mut embryo_list = Vec::new();
 
@@ -20,18 +21,12 @@ fn generate_embryo_list(json_string: String) -> Vec<Embryo> {
         let random_number: u32 = rng.gen_range(1..=100);
         let random_number_str = random_number.to_string();
 
-        if random_number_str.contains(&search.value) || search.value.contains(&random_number_str) {
+        if random_number_str.contains(value) || value.contains(&random_number_str) {
+            let mut embryo_properties = HashMap::new();
+            embryo_properties.insert("url".to_string(),format!("http://example/{}", random_number));
+            embryo_properties.insert("resume".to_string(),random_number_str);
             let embryo = Embryo {
-                properties: vec![
-                    EmPair {
-                        name: "url".to_string(),
-                        value: format!("http://example/{}", random_number),
-                    },
-                    EmPair {
-                        name: "resume".to_string(),
-                        value: random_number_str,
-                    },
-                ],
+                properties: embryo_properties,
             };
             embryo_list.push(embryo);
         }
