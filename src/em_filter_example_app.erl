@@ -1,12 +1,11 @@
 -module(em_filter_example_app).
 -behaviour(application).
--behaviour(cowboy_handler).
 
 %% Application callbacks
 -export([start/2, stop/1]).
 
-%% Cowboy handler callbacks
--export([init/2, terminate/3]).
+%% handler callbacks
+-export([handle/1]).
 
 %% Application behavior
 start(_StartType, _StartArgs) ->
@@ -18,22 +17,17 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok.
 
-%% Cowboy handler behavior
-init(Req0, State) ->
-    {ok, Body, Req} = cowboy_req:read_body(Req0),
-    io:format("Received body: ~p~n", [Body]),
-    EmbryoList = generate_embryo_list(Body),
-    Response = #{embryo_list => EmbryoList},
-    EncodedResponse = jsone:encode(Response),
-    Req2 = cowboy_req:reply(200,
-        #{<<"content-type">> => <<"application/json">>},
-        EncodedResponse,
-        Req
-    ),
-    {ok, Req2, State}.
+handle(Body) when is_binary(Body) ->
+    handle(binary_to_list(Body));
 
-terminate(_Reason, _Req, _State) ->
-    ok.
+handle(Body) when is_list(Body) ->
+    io:format("Bing Filter received body: ~p~n", [Body]),
+    EmbryoList = generate_embryo_list(list_to_binary(Body)),
+    Response = #{embryo_list => EmbryoList},
+    jsone:encode(Response);
+
+handle(_) ->
+    jsone:encode(#{error => <<"Invalid request body">>}).
 
 generate_embryo_list(JsonBinary) ->
     io:format("Call ~p~n", [JsonBinary]),
