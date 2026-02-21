@@ -1,80 +1,72 @@
 -module(em_filter_example_app).
 -behaviour(application).
 
-%% Application callbacks
 -export([start/2, stop/1]).
-
-%% handler callbacks
 -export([handle/1]).
 
-%% Application behavior
+%%--------------------------------------------------------------------
+%% Application behaviour
+%%--------------------------------------------------------------------
+
 start(_StartType, _StartArgs) ->
-    {ok, Port} = em_filter:find_port(),
-    FilterUrl = lists:concat(["http://localhost:", integer_to_list(Port), "/query"]),
-    io:format("Filter registered: ~s~n", [FilterUrl]),
-    em_filter_sup:start_link(random_filter, ?MODULE, Port).
+    io:format("[em_filter_example] Starting random filter~n"),
+    em_filter:start_filter(random_filter, ?MODULE).
 
 stop(_State) ->
-    ok.
+    em_filter:stop_filter(random_filter).
+
+%%--------------------------------------------------------------------
+%% Filter handler
+%%--------------------------------------------------------------------
 
 handle(Body) when is_binary(Body) ->
-    handle(binary_to_list(Body));
+    Value      = extract_value(Body),
+    generate_random_embryos(binary_to_list(Value), 10, []);
+handle(Other) ->
+    io:format("[em_filter_example] >>> Invalid body: ~p~n", [Other]),
+    [].
 
-handle(Body) when is_list(Body) ->
-    io:format("Bing Filter received body: ~p~n", [Body]),
-    EmbryoList = generate_embryo_list(list_to_binary(Body)),
-    Response = #{embryo_list => EmbryoList},
-    jsone:encode(Response);
+%%--------------------------------------------------------------------
+%% Internal helpers
+%%--------------------------------------------------------------------
 
-handle(_) ->
-    jsone:encode(#{error => <<"Invalid request body">>}).
-
-generate_embryo_list(JsonBinary) ->
-    io:format("Call ~p~n", [JsonBinary]),
-    try jsone:decode(JsonBinary) of
-        SearchMap when is_map(SearchMap) ->
-            % Extraire spécifiquement la valeur de la clé "value"
-            Value = case maps:get(<<"value">>, SearchMap, undefined) of
-                undefined -> "";
-                ValBin -> binary_to_list(ValBin)
-            end,
-            io:format("Search value: ~p~n", [Value]),
-            generate_random_embryos(Value, 10, []);
+%% Extracts the search value from the body.
+%% If the body is a JSON object, looks for "value" or "query" keys.
+%% Otherwise treats the raw binary as the value directly.
+-spec extract_value(binary()) -> binary().
+extract_value(Body) ->
+    try json:decode(Body) of
+        Map when is_map(Map) ->
+            case maps:get(<<"value">>, Map, maps:get(<<"query">>, Map, Body)) of
+                V when is_binary(V) -> V;
+                _                   -> Body
+            end;
+        %% Scalar JSON value (number, string…) — use the raw body as-is.
         _ ->
-            []
+            Body
     catch
-        _:Error ->
-            io:format("Error decoding JSON: ~p~n", [Error]),
-            []
+        _:_ -> Body
     end.
 
 generate_random_embryos(_Value, 0, Acc) ->
     lists:reverse(Acc);
 generate_random_embryos(Value, Count, Acc) ->
-    % Génération d'un nombre aléatoire entre 1 et 100
-    RandomNumber = rand:uniform(100),
-    RandomNumberStr = integer_to_list(RandomNumber),
-    
-    NewAcc = case string_contains(RandomNumberStr, Value) orelse string_contains(Value, RandomNumberStr) of
+    Num    = integer_to_list(rand:uniform(100)),
+    NewAcc = case string_contains(Num, Value) orelse string_contains(Value, Num) of
         true ->
-            Url = lists:concat(["http://example/", RandomNumberStr]),
+            Url    = list_to_binary("http://example/" ++ Num),
             Embryo = #{
-                properties => #{
-                    <<"url">> => list_to_binary(Url),
-                    <<"resume">> => list_to_binary(RandomNumberStr)
+                <<"properties">> => #{
+                    <<"url">>    => Url,
+                    <<"resume">> => list_to_binary(Num)
                 }
             },
-            io:format("Match found: ~p~n", [RandomNumberStr]),
             [Embryo | Acc];
         false ->
             Acc
     end,
-    
     generate_random_embryos(Value, Count - 1, NewAcc).
 
-% Fonction pour vérifier si une chaîne en contient une autre
-string_contains(String, SubString) ->
-    case {String, SubString} of
-        {_, ""} -> false;  % Si la sous-chaîne est vide, renvoyer false
-        _ -> string:str(String, SubString) > 0
-    end.
+%% Returns true if SubString is a non-empty substring of String.
+string_contains(_String, "")       -> false;
+string_contains(String, SubString) -> string:str(String, SubString) > 0.
