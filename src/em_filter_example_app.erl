@@ -1,38 +1,59 @@
+%%%-------------------------------------------------------------------
+%%% @doc Example/test agent demonstrating the agent API.
+%%%
+%%% Generates random embryos that contain or are contained by the
+%%% query value. Tracks how many queries it has handled and
+%%% accumulates the history of values seen across queries.
+%%%
+%%% Handler contract: `handle/2' (Body, Memory) -> {Result, NewMemory}.
+%%% Memory schema: `#{count => integer(), values => [binary()]}'.
+%%% @end
+%%%-------------------------------------------------------------------
 -module(em_filter_example_app).
 -behaviour(application).
 
 -export([start/2, stop/1]).
--export([handle/1]).
+-export([handle/2]).
 
-%%--------------------------------------------------------------------
+-define(CAPABILITIES, [<<"example">>, <<"test">>, <<"random">>]).
+
+%%====================================================================
 %% Application behaviour
-%%--------------------------------------------------------------------
+%%====================================================================
 
 start(_StartType, _StartArgs) ->
-    io:format("[em_filter_example] Starting random filter~n"),
-    em_filter:start_filter(random_filter, ?MODULE).
+    io:format("[em_filter_example] Starting example agent~n"),
+    em_filter:start_agent(random_filter, ?MODULE, #{
+        capabilities => ?CAPABILITIES,
+        memory       => ets
+    }).
 
 stop(_State) ->
-    em_filter:stop_filter(random_filter).
+    em_filter:stop_agent(random_filter).
 
-%%--------------------------------------------------------------------
-%% Filter handler
-%%--------------------------------------------------------------------
+%%====================================================================
+%% Agent handler
+%%====================================================================
 
-handle(Body) when is_binary(Body) ->
-    Value      = extract_value(Body),
-    generate_random_embryos(binary_to_list(Value), 10, []);
-handle(Other) ->
-    io:format("[em_filter_example] >>> Invalid body: ~p~n", [Other]),
-    [].
+handle(Body, Memory) when is_binary(Body) ->
+    Value  = extract_value(Body),
+    Count  = maps:get(count,  Memory, 0),
+    Values = maps:get(values, Memory, []),
+    io:format("[em_filter_example] query #~p: ~p~n", [Count + 1, Value]),
+    Embryos   = generate_random_embryos(binary_to_list(Value), 10, []),
+    NewMemory = Memory#{
+        count  => Count + 1,
+        values => [Value | Values]
+    },
+    {Embryos, NewMemory};
+handle(Other, Memory) ->
+    io:format("[em_filter_example] Invalid body: ~p~n", [Other]),
+    {[], Memory}.
 
-%%--------------------------------------------------------------------
+%%====================================================================
 %% Internal helpers
-%%--------------------------------------------------------------------
+%%====================================================================
 
-%% Extracts the search value from the body.
-%% If the body is a JSON object, looks for "value" or "query" keys.
-%% Otherwise treats the raw binary as the value directly.
 -spec extract_value(binary()) -> binary().
 extract_value(Body) ->
     try json:decode(Body) of
@@ -41,7 +62,6 @@ extract_value(Body) ->
                 V when is_binary(V) -> V;
                 _                   -> Body
             end;
-        %% Scalar JSON value (number, string…) — use the raw body as-is.
         _ ->
             Body
     catch
@@ -67,6 +87,5 @@ generate_random_embryos(Value, Count, Acc) ->
     end,
     generate_random_embryos(Value, Count - 1, NewAcc).
 
-%% Returns true if SubString is a non-empty substring of String.
 string_contains(_String, "")       -> false;
 string_contains(String, SubString) -> string:str(String, SubString) > 0.
