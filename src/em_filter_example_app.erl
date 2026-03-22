@@ -1,21 +1,31 @@
 %%%-------------------------------------------------------------------
-%%% @doc Example/test agent demonstrating the agent API.
+%%% @doc Example/test agent demonstrating the em_filter agent API.
 %%%
 %%% Generates random embryos that contain or are contained by the
 %%% query value. Tracks how many queries it has handled and
 %%% accumulates the history of values seen across queries.
 %%%
-%%% Handler contract: `handle/2' (Body, Memory) -> {Result, NewMemory}.
-%%% Memory schema: `#{count => integer(), values => [binary()]}'.
+%%% === Capability cascade ===
+%%%
+%%%   base_capabilities/0 extends em_filter:base_capabilities().
+%%%
+%%% Handler contract: handle/2 (Body, Memory) -> {Result, NewMemory}.
+%%% Memory schema: #{count => integer(), values => [binary()]}.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(em_filter_example_app).
 -behaviour(application).
 
 -export([start/2, stop/1]).
--export([handle/2]).
+-export([handle/2, base_capabilities/0]).
 
--define(CAPABILITIES, [<<"example">>, <<"test">>, <<"random">>]).
+%%====================================================================
+%% Capability cascade
+%%====================================================================
+
+-spec base_capabilities() -> [binary()].
+base_capabilities() ->
+    em_filter:base_capabilities() ++ [<<"example">>, <<"test">>, <<"random">>].
 
 %%====================================================================
 %% Application behaviour
@@ -24,9 +34,10 @@
 start(_StartType, _StartArgs) ->
     io:format("[em_filter_example] Starting example agent~n"),
     em_filter:start_agent(random_filter, ?MODULE, #{
-        capabilities => ?CAPABILITIES,
+        capabilities => base_capabilities(),
         memory       => ets
-    }).
+    }),
+    {ok, self()}.
 
 stop(_State) ->
     em_filter:stop_agent(random_filter).
