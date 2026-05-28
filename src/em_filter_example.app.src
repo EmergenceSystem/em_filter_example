@@ -1,15 +1,26 @@
 {application, em_filter_example, [
-    {description, "em_filter simple example"},
-    {vsn, "0.1.0"},
-    {registered, []},
+    {description, "em_filter example Phase 3 filter — keyword-scored semantic search"},
+    {vsn, "0.2.0"},
+    {registered, [em_filter_example_sup, em_filter_example_server]},
     {mod, {em_filter_example_app, []}},
     {applications, [
         kernel,
         stdlib,
+        inets,
+        cowboy,
         em_filter
     ]},
-    {env, []},
-    {modules, []},
+    {env, [
+        {pop_port,   9200},
+        {query_port, 9201},
+        {pop_seeds,  []}
+    ]},
+    {modules, [
+        em_filter_example_app,
+        em_filter_example_sup,
+        em_filter_example_server,
+        em_filter_example_handler
+    ]},
     {licenses, ["Apache-2.0"]},
     {links, [{"GitHub", "https://github.com/EmergenceSystem/em_filter_example"}]}
 ]}.
