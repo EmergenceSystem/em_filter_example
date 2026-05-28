@@ -1,13 +1,17 @@
 %%%-------------------------------------------------------------------
-%%% @doc em_filter_example handler — keyword-scored semantic search.
+%%% @doc em_filter_example handler — digit-match number filter.
 %%%
-%%% Contains fifteen hardcoded articles across three topics:
-%%%   - Erlang / OTP / BEAM runtime
-%%%   - EmergenceSystem project (emquest, em_filter, em_pop, em_disco)
-%%%   - Semantic search algorithms (vector, cosine, similarity)
+%%% Contains twenty items, one for each integer 1-20.
+%%% Each item has a label (the number as a binary string) and a value
+%%% describing one arithmetic property. No URL field: results render
+%%% as generic cards in emquest.
 %%%
-%%% query/1 scores items by keyword match and returns those with
-%%% score > 0, sorted descending.
+%%% query/1 scores items by counting how many times the query binary
+%%% appears as a substring of the item label, plus individual byte
+%%% matches. Items with score 0 are excluded.
+%%%
+%%% Example: query <<"1">>
+%%%   matches: 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
@@ -18,15 +22,17 @@
 %% Public API
 %%====================================================================
 
-%% @doc Return scored items matching QueryBinary, sorted best-first.
+%% @doc Return scored items whose label contains the query string.
 -spec query(binary()) -> [map()].
+query(<<>>) -> [];
 query(QueryBinary) ->
-    Words  = tokenise(QueryBinary),
-    Scored = [{score(Words, I), I} || I <- items()],
+    Q      = string:trim(binary_to_list(QueryBinary)),
+    QB     = list_to_binary(Q),
+    Scored = [{digit_score(QB, I), I} || I <- items()],
     Sorted = lists:sort(fun({A, _}, {B, _}) -> A > B end, Scored),
     [I#{<<"score">> => S} || {S, I} <- Sorted, S > 0].
 
-%% @doc em_filter handle/2 contract (Memory is stateless for this handler).
+%% @doc em_filter handle/2 contract (stateless).
 -spec handle(binary(), term()) -> {binary(), term()}.
 handle(QueryBinary, Memory) ->
     Items  = query(QueryBinary),
@@ -34,110 +40,75 @@ handle(QueryBinary, Memory) ->
     {Result, Memory}.
 
 %%====================================================================
-%% Corpus
+%% Corpus — integers 1-20, ASCII-only values
 %%====================================================================
 
 -spec items() -> [map()].
 items() ->
     [
-        %% ── Erlang / OTP / BEAM ─────────────────────────────────────
-        #{<<"label">>  => <<"Erlang Programming Language">>,
-          <<"url">>    => <<"https://www.erlang.org">>,
-          <<"value">>  => <<"Concurrent, fault-tolerant functional "
-                            "language for building scalable systems">>},
-
-        #{<<"label">>  => <<"OTP Design Principles">>,
-          <<"url">>    => <<"https://erlang.org/doc/design_principles/des_princ.html">>,
-          <<"value">>  => <<"The Open Telecom Platform framework for "
-                            "building robust distributed Erlang systems">>},
-
-        #{<<"label">>  => <<"BEAM Virtual Machine">>,
-          <<"url">>    => <<"https://erlang.org/doc/efficiency_guide/introduction.html">>,
-          <<"value">>  => <<"Erlang runtime with preemptive scheduling "
-                            "and per-process garbage collection">>},
-
-        #{<<"label">>  => <<"Cowboy HTTP Server">>,
-          <<"url">>    => <<"https://ninenines.eu/docs/en/cowboy/2.12/guide/">>,
-          <<"value">>  => <<"Small and fast HTTP server for Erlang and "
-                            "OTP applications, used by em_filter">>},
-
-        #{<<"label">>  => <<"GenServer Behaviour — Erlang OTP">>,
-          <<"url">>    => <<"https://erlang.org/doc/man/gen_server.html">>,
-          <<"value">>  => <<"OTP generic server behaviour for building "
-                            "client-server Erlang processes">>},
-
-        %% ── EmergenceSystem project ──────────────────────────────────
-        #{<<"label">>  => <<"EmergenceSystem GitHub">>,
-          <<"url">>    => <<"https://github.com/EmergenceSystem">>,
-          <<"value">>  => <<"Distributed semantic search platform using "
-                            "population protocol gossip and Erlang OTP">>},
-
-        #{<<"label">>  => <<"emquest — Semantic Search Interface">>,
-          <<"url">>    => <<"https://github.com/EmergenceSystem/emquest">>,
-          <<"value">>  => <<"Emquest semantic search dispatcher with SSE "
-                            "streaming and LLM query expansion">>},
-
-        #{<<"label">>  => <<"em_filter — Agent Framework">>,
-          <<"url">>    => <<"https://github.com/EmergenceSystem/em_filter">>,
-          <<"value">>  => <<"Erlang OTP framework for building em_pop-aware "
-                            "semantic search agents and filters">>},
-
-        #{<<"label">>  => <<"em_pop — Population Protocol">>,
-          <<"url">>    => <<"https://github.com/EmergenceSystem/em_pop">>,
-          <<"value">>  => <<"Gossip-based peer discovery for the "
-                            "EmergenceSystem distributed search network">>},
-
-        #{<<"label">>  => <<"em_disco — Super-Node">>,
-          <<"url">>    => <<"https://github.com/EmergenceSystem/em_disco">>,
-          <<"value">>  => <<"Bootstrap super-node for EmergenceSystem "
-                            "peer discovery using em_pop gossip">>},
-
-        %% ── Semantic search algorithms ───────────────────────────────
-        #{<<"label">>  => <<"Semantic Search">>,
-          <<"url">>    => <<"https://en.wikipedia.org/wiki/Semantic_search">>,
-          <<"value">>  => <<"Search based on meaning rather than keywords, "
-                            "using vector embeddings and similarity">>},
-
-        #{<<"label">>  => <<"Vector Similarity Search">>,
-          <<"url">>    => <<"https://en.wikipedia.org/wiki/Nearest_neighbor_search">>,
-          <<"value">>  => <<"Finding nearest neighbours in high-dimensional "
-                            "vector spaces for semantic matching">>},
-
-        #{<<"label">>  => <<"Cosine Similarity">>,
-          <<"url">>    => <<"https://en.wikipedia.org/wiki/Cosine_similarity">>,
-          <<"value">>  => <<"Metric for measuring similarity between two "
-                            "vectors based on the angle between them">>},
-
-        #{<<"label">>  => <<"Word Embeddings">>,
-          <<"url">>    => <<"https://en.wikipedia.org/wiki/Word_embedding">>,
-          <<"value">>  => <<"Dense vector representations of words capturing "
-                            "semantic meaning and relationships">>},
-
-        #{<<"label">>  => <<"Information Retrieval">>,
-          <<"url">>    => <<"https://en.wikipedia.org/wiki/Information_retrieval">>,
-          <<"value">>  => <<"Finding documents matching an information need "
-                            "from a collection using search and ranking">>}
+        #{<<"label">> => <<"1">>,
+          <<"value">> => <<"Multiplicative identity: n * 1 = n">>},
+        #{<<"label">> => <<"2">>,
+          <<"value">> => <<"Smallest prime; only even prime number">>},
+        #{<<"label">> => <<"3">>,
+          <<"value">> => <<"First odd prime; triangular number (1+2=3)">>},
+        #{<<"label">> => <<"4">>,
+          <<"value">> => <<"2^2 — smallest composite number">>},
+        #{<<"label">> => <<"5">>,
+          <<"value">> => <<"Prime; sum of first two primes (2 + 3)">>},
+        #{<<"label">> => <<"6">>,
+          <<"value">> => <<"First perfect number: 1 + 2 + 3 = 6">>},
+        #{<<"label">> => <<"7">>,
+          <<"value">> => <<"Prime; number of days in a week">>},
+        #{<<"label">> => <<"8">>,
+          <<"value">> => <<"2^3 — first cube greater than 1">>},
+        #{<<"label">> => <<"9">>,
+          <<"value">> => <<"3^2 — smallest odd composite number">>},
+        #{<<"label">> => <<"10">>,
+          <<"value">> => <<"Base of the decimal system; 2 * 5">>},
+        #{<<"label">> => <<"11">>,
+          <<"value">> => <<"Smallest two-digit prime; repunit palindrome">>},
+        #{<<"label">> => <<"12">>,
+          <<"value">> => <<"Highly composite: divisors 1,2,3,4,6,12">>},
+        #{<<"label">> => <<"13">>,
+          <<"value">> => <<"Prime; emirp (13 reversed = 31, also prime)">>},
+        #{<<"label">> => <<"14">>,
+          <<"value">> => <<"2 * 7; smallest even number that is not a sum of two primes">>},
+        #{<<"label">> => <<"15">>,
+          <<"value">> => <<"3 * 5; triangular number (1+2+3+4+5)">>},
+        #{<<"label">> => <<"16">>,
+          <<"value">> => <<"2^4 — base of hexadecimal counting">>},
+        #{<<"label">> => <<"17">>,
+          <<"value">> => <<"Prime; Fermat prime (2^(2^2) + 1)">>},
+        #{<<"label">> => <<"18">>,
+          <<"value">> => <<"2 * 3^2; digit sum always divisible by 9">>},
+        #{<<"label">> => <<"19">>,
+          <<"value">> => <<"Prime; Cuban prime">>},
+        #{<<"label">> => <<"20">>,
+          <<"value">> => <<"4 * 5; base of vigesimal (Mayan) numeral system">>}
     ].
 
 %%====================================================================
-%% Scoring
+%% Scoring — binary substring counting
 %%====================================================================
 
-%% score = 2 × (words matching label) + 1 × (words matching value)
--spec score([string()], map()) -> non_neg_integer().
-score(Words, Item) ->
-    Label = string:lowercase(unicode:characters_to_list(
-                maps:get(<<"label">>, Item, <<>>))),
-    Value = string:lowercase(unicode:characters_to_list(
-                maps:get(<<"value">>, Item, <<>>))),
-    LabelHits = length([W || W <- Words,
-                             string:find(Label, W) =/= nomatch]),
-    ValueHits = length([W || W <- Words,
-                             string:find(Value, W) =/= nomatch]),
-    2 * LabelHits + ValueHits.
+%% score = 3 x full-query occurrences in label + 1 x per-byte occurrences
+-spec digit_score(binary(), map()) -> non_neg_integer().
+digit_score(Q, Item) ->
+    Label = maps:get(<<"label">>, Item, <<>>),
+    Full  = count_bin(Q, Label),
+    Chars = lists:sum([count_bin(<<C>>, Label) || <<C>> <= Q]),
+    3 * Full + Chars.
 
-%% Tokenise: lowercase, split on whitespace, drop empties.
--spec tokenise(binary()) -> [string()].
-tokenise(Bin) ->
-    Lower = string:lowercase(unicode:characters_to_list(Bin)),
-    [W || W <- string:lexemes(Lower, " \t\n\r,.;:!?"), W =/= ""].
+%% Count non-overlapping occurrences of Pat in Bin.
+-spec count_bin(binary(), binary()) -> non_neg_integer().
+count_bin(_Pat, <<>>) -> 0;
+count_bin(Pat, Bin) ->
+    case binary:match(Bin, Pat) of
+        nomatch ->
+            0;
+        {Start, Len} ->
+            RestStart = Start + Len,
+            Rest = binary:part(Bin, RestStart, byte_size(Bin) - RestStart),
+            1 + count_bin(Pat, Rest)
+    end.
