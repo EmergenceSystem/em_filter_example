@@ -48,6 +48,7 @@ start_pop_and_http() ->
     catch cowboy:stop_listener(em_filter_example_query_listener),
     {ok, PopPid} = em_pop_sup:start_node(em_filter_example, #{
         port            => PopPort,
+        query_port      => QueryPort,
         vector          => Vec,
         max_peers       => 100,
         gossip_interval => 5_000
